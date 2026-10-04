@@ -32,12 +32,12 @@ Kaggle CSV/GZ/ZIP → chunked Python ETL + DQ → SQLite raw_* / clean_* / rejec
 
 ## Outputs
 
-`warehouse.sqlite`, `dq_report_loans.csv`, `dq_report_paysim.csv`, `RCA.md`, `FRAUD_RULES.md`, `DASHBOARD_SPEC.md`, `tableau_extracts/`, `investigator_queue.csv`, `report.xlsx`, `summary.pptx`, `RESUME_NUMBERS.md`.
+`warehouse.sqlite`, `dq_report_loans.csv`, `dq_report_paysim.csv`, `RCA.md`, `FRAUD_RULES.md`, `DASHBOARD_SPEC.md`, `tableau_extracts/`, `investigator_queue.csv`, `report.xlsx`, `summary.pptx`, `NUMBERS.md`.
 
 ## Limitations
 
-- Lending Club is US marketplace lending data. It is not Navi data, policy, product or customer behavior.
+- Lending Club is US marketplace lending data. It does not represent any target lender's portfolio, policy, product or customer behavior.
 - Resolved-only default rates exclude unresolved/current loans, creating selection and censoring limitations.
 - Issue-quarter vintage analysis is not exposure-aligned months-on-book analysis.
 - PaySim is synthetic. Rule results are not evidence of production fraud detection quality or real loss prevention.
-- Data contains no Navi decision policy, real investigator outcomes, RBI/SEBI/IRDA requirements or regulator context. This is an analytical portfolio exercise, not policy or compliance advice.
+- Data contains no target institution's decision policy, real investigator outcomes or applicable regulator context. This is an analytical portfolio exercise, not policy or compliance advice.

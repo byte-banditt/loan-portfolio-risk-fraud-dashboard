@@ -327,7 +327,7 @@ def stage_reporting(credit,fraud):
     slide('Credit findings',[f"Loans loaded {credit['total']:,}; resolved {credit['resolved']:,}",f"Resolved default rate {c.execute('SELECT AVG(default_flag) FROM credit_resolved').fetchone()[0]:.2%}",f"Issue-quarter vintage points {len(pd.read_csv(ROOT/'tableau_extracts'/'vintage_default_rate.csv'))}",f"Worst deterioration: {credit['worst']}"])
     slide('Root-cause analysis',[f"Worst segment: {credit['worst']}",f"Top marginal shift-share driver: {credit['driver']} ({credit['pp']:+.3f} pp)","Marginal shift-share dimensions overlap; association is not causation.","See RCA.md for windows, rates and caveats."])
     slide('Fraud rules and performance',[f"PaySim transactions {fraud['n']:,}; supported rules {fraud['rules']}",f"Combined precision {fraud['perf']['precision']:.3%}; recall {fraud['perf']['recall']:.3%}",f"Alerts/day {fraud['perf']['alerts_per_day']:.2f}","Held-out final 30% of ordered steps; thresholds selected on first 70%."])
-    slide('Limitations',["US Lending Club data; not Navi portfolio or policy context.","Default rate uses resolved loans only; current loans censored/excluded.","Issue-quarter vintage rates only; no comparable months-on-book curves.","PaySim is synthetic; no production performance or regulator conclusions.","No real policy, underwriting, investigation or regulator context."])
+    slide('Limitations',["US Lending Club data; not any target lender's portfolio or policy context.","Default rate uses resolved loans only; current loans censored/excluded.","Issue-quarter vintage rates only; no comparable months-on-book curves.","PaySim is synthetic; no production performance or regulator conclusions.","No real policy, underwriting, investigation or regulator context."])
     prs.save(ROOT/'summary.pptx'); c.close()
     print('Reporting: Tableau extracts, formatted Excel workbook, six-slide deck created.')
 
@@ -335,7 +335,7 @@ def write_docs(credit,fraud):
     vals=pd.read_csv(ROOT/'tableau_extracts'/'loan_quality.csv').set_index('metric').value
     spec=(ROOT/'DASHBOARD_SPEC.md').read_text(); kpi_section=spec.split('## Charts, filters and extracts')[0]; kpis=sum(1 for line in kpi_section.splitlines() if line.lstrip()[:1].isdigit() and '. ' in line)
     resume=f"# Resume numbers (computed from this run)\n\n| Value | Result | Code path |\n|---|---:|---|\n| Total loans loaded | {credit['total']:,} | `pipeline.py:stage_etl`, `raw_loans` |\n| Loans after cleaning | {int(vals['Loans after cleaning']):,} | `pipeline.py:stage_etl`, `clean_loans` |\n| Worst segment | {credit['worst']} | `pipeline.py:stage_credit`, `RCA.md` |\n| Percentage-point increase attributed to top driver | {credit['pp']:+.3f} pp ({credit['driver']}) | `pipeline.py:stage_credit`, `RCA.md` |\n| Dashboard KPI cards | {kpis} | `DASHBOARD_SPEC.md` |\n| Fraud rules | {fraud['rules']} | `pipeline.py:stage_fraud`, `FRAUD_RULES.md` |\n| PaySim transactions | {fraud['n']:,} | `pipeline.py:stage_etl`, `clean_paysim` |\n| Combined test precision | {fraud['perf']['precision']:.6f} | `pipeline.py:stage_fraud`, test window |\n| Combined test recall | {fraud['perf']['recall']:.6f} | `pipeline.py:stage_fraud`, test window |\n| Alerts per day | {fraud['perf']['alerts_per_day']:.6f} | `pipeline.py:stage_fraud`, 24 steps/day |\n"
-    (ROOT/'RESUME_NUMBERS.md').write_text(resume)
+    (ROOT/'NUMBERS.md').write_text(resume)
     readme=f"""# Loan Portfolio Risk & Fraud Early-Warning Dashboard
 
 Portfolio project for credit risk, fraud monitoring and data analytics. Built from Kaggle Lending Club accepted-loan records and PaySim synthetic transaction records. Python ETL loads chunked CSV data to SQLite `raw_*`, `clean_*`, and `rejected_*` tables; SQL files define analysis views/rules. Outputs: DQ reports, credit vintage/segment/delinquency analysis, fraud EDA and held-out rule metrics, RCA, Tableau extracts, Excel workbook and six-slide presentation.
@@ -370,15 +370,15 @@ Kaggle CSV/GZ/ZIP → chunked Python ETL + DQ → SQLite raw_* / clean_* / rejec
 
 ## Outputs
 
-`warehouse.sqlite`, `dq_report_loans.csv`, `dq_report_paysim.csv`, `RCA.md`, `FRAUD_RULES.md`, `DASHBOARD_SPEC.md`, `tableau_extracts/`, `investigator_queue.csv`, `report.xlsx`, `summary.pptx`, `RESUME_NUMBERS.md`.
+`warehouse.sqlite`, `dq_report_loans.csv`, `dq_report_paysim.csv`, `RCA.md`, `FRAUD_RULES.md`, `DASHBOARD_SPEC.md`, `tableau_extracts/`, `investigator_queue.csv`, `report.xlsx`, `summary.pptx`, `NUMBERS.md`.
 
 ## Limitations
 
-- Lending Club is US marketplace lending data. It is not Navi data, policy, product or customer behavior.
+- Lending Club is US marketplace lending data. It does not represent any target lender's portfolio, policy, product or customer behavior.
 - Resolved-only default rates exclude unresolved/current loans, creating selection and censoring limitations.
 - Issue-quarter vintage analysis is not exposure-aligned months-on-book analysis.
 - PaySim is synthetic. Rule results are not evidence of production fraud detection quality or real loss prevention.
-- Data contains no Navi decision policy, real investigator outcomes, RBI/SEBI/IRDA requirements or regulator context. This is an analytical portfolio exercise, not policy or compliance advice.
+- Data contains no target institution's decision policy, real investigator outcomes or applicable regulator context. This is an analytical portfolio exercise, not policy or compliance advice.
 """
     (ROOT/'README.md').write_text(readme)
 
