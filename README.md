@@ -4,7 +4,7 @@ Portfolio project for credit risk, fraud monitoring and data analytics. Built fr
 
 ## Run
 
-Python 3.11+ required. Install packages with `python -m pip install -r requirements.txt`. Keep downloaded source files in `data/`; run all stages with `make all` (equivalent to `python pipeline.py all`). Model-only stage, after ETL created `warehouse.sqlite`: `make model` or `python pipeline.py model`. Re-run is idempotent: model tables and outputs are rebuilt. Credit model uses chronological issue-year train, validation and test windows; PaySim uses sorted unique steps with first 70% training and final 30% testing. No random split is used. SQLite is local; no cloud services.
+Python 3.11+ and JDK 17+ with Maven required. Install Python packages with `python -m pip install -r requirements.txt`. Keep downloaded source files in `data/`; run all stages with `make all` (equivalent to `python pipeline.py all`). The reporting stage uses Apache POI via Maven to create a native Excel PivotTable. Model-only stage, after ETL created `warehouse.sqlite`: `make model` or `python pipeline.py model`. Re-run is idempotent: model tables and outputs are rebuilt. Credit model uses chronological issue-year train, validation and test windows; PaySim uses sorted unique steps with first 70% training and final 30% testing. No random split is used. SQLite is local; no cloud services.
 
 ## Data sources and download
 
@@ -30,7 +30,7 @@ Kaggle CSV/GZ/ZIP → chunked Python ETL + DQ → SQLite raw_* / clean_* / rejec
 - Fraud candidates are selected from EDA and tuned on training period only. Test period is final 30% of ordered distinct hourly steps. Alerts/day = test alerts divided by test hours / 24. Investigative score is fired-rule count plus alert amount divided by max test-alert amount.
 - Credit model reads inspected application-time fields. WoE numeric bins, category mappings, IV and logistic fit use training vintages only. Grade, sub_grade and int_rate are excluded as Lending Club underwriting outputs; grade-only logistic regression is a same-test-window benchmark. High-null mths_since_last_delinq and mths_since_last_record are not used. Score points use 20 points per odds doubling, anchored at 600 points for 50:1 good-to-bad odds.
 - Drift bins are fitted on training vintages; PSI above 0.10 is watch and above 0.25 is action. Calibration and cutoff trade-offs use the held-out test window. Rejected-applicant outcomes are absent, so reject inference is unavailable; cutoff sweep is descriptive and makes no causal recommendation.
-- Excel `Data` contains first 20,000 cleaned rows as a manageable workbook extract; full data remains in SQLite. Excel includes actual VLOOKUP formulas. Native PivotTables must be inserted manually as described in `INSTRUCTIONS`.
+- Excel `Data` contains first 20,000 cleaned rows as a manageable workbook extract; full data remains in SQLite. Excel includes actual VLOOKUP formulas and a generated native PivotTable. Field layout and refresh steps are documented in `INSTRUCTIONS.md` and the `INSTRUCTIONS` worksheet.
 
 ## Outputs
 

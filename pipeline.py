@@ -315,23 +315,27 @@ All model extracts use resolved loans and chronological issue-year splits. Rejec
     loan_quality.to_csv(ROOT/'tableau_extracts'/'loan_quality.csv',index=False)
     pd.DataFrame([{'dataset':'PaySim','transactions':c.execute('SELECT COUNT(*) FROM clean_paysim').fetchone()[0]}]).to_csv(ROOT/'tableau_extracts'/'fraud_transaction_summary.csv',index=False)
     # Stream up to Excel's hard row cap, leaving header row.
-    wb=Workbook(); ws=wb.active; ws.title='Data'; headers=['id','issue_d','loan_status','grade','loan_amnt','purpose','addr_state','grade_default_rate']; ws.append(headers)
+    wb=Workbook(); ws=wb.active; ws.title='Data'; headers=['id','issue_d','loan_status','grade','loan_amnt','purpose','addr_state','grade_default_rate','default_flag']; ws.append(headers)
     lookup=pd.read_sql_query("SELECT 'grade|'||COALESCE(NULLIF(grade,''),'Unknown') key, COUNT(*) loans, SUM(default_flag) defaults, AVG(default_flag) rate FROM credit_resolved GROUP BY grade",c)
     sl=wb.create_sheet('Segment_Lookup'); sl.append(list(lookup.columns))
     for row in lookup.itertuples(index=False,name=None): sl.append(list(row))
-    for row in c.execute('SELECT id,issue_d,loan_status,grade,loan_amnt,purpose,addr_state FROM clean_loans ORDER BY rowid LIMIT 20000'):
-      ws.append(list(row)+[f'=IFERROR(VLOOKUP("grade|"&D{ws.max_row+1},Segment_Lookup!$A$2:$D${len(lookup)+1},4,FALSE),"")'])
+    for row in c.execute("SELECT id,issue_d,loan_status,grade,loan_amnt,purpose,addr_state,CASE WHEN lower(trim(loan_status)) IN ('charged off','default','does not meet the credit policy. status:charged off') THEN 1 WHEN lower(trim(loan_status))='fully paid' THEN 0 ELSE NULL END FROM clean_loans ORDER BY rowid LIMIT 20000"):
+      ws.append(list(row[:7])+[f'=IFERROR(VLOOKUP("grade|"&D{ws.max_row+1},Segment_Lookup!$A$2:$D${len(lookup)+1},4,FALSE),"")',row[7]])
     summary=wb.create_sheet('Summary',0); summary.append(['Metric','Value'])
     for k,v in [('Loans loaded',credit['total']),('Loans after cleaning',c.execute('SELECT COUNT(*) FROM clean_loans').fetchone()[0]),('Resolved loans',credit['resolved']),('Resolved default rate',c.execute('SELECT AVG(default_flag) FROM credit_resolved').fetchone()[0]),('PaySim transactions',c.execute('SELECT COUNT(*) FROM clean_paysim').fetchone()[0]),('Combined precision',fraud['perf']['precision']),('Combined recall',fraud['perf']['recall']),('Combined alerts per day',fraud['perf']['alerts_per_day'])]: summary.append([k,v])
     ps=wb.create_sheet('Fraud_Performance'); ps.append(list(fraud['performance'].columns))
     for row in fraud['performance'].itertuples(index=False,name=None): ps.append(list(row))
-    inst=wb.create_sheet('INSTRUCTIONS'); inst.append(['Excel reporting instructions']); inst.append(['Data sheet contains first 20,000 cleaned loans as a manageable workbook extract; underlying complete portfolio is in warehouse.sqlite.']); inst.append(['Select Data sheet, then Insert > PivotTable.']); inst.append(['Use issue_d, loan_status, grade, purpose, addr_state and loan_amnt to build pivots.']); inst.append(['VLOOKUP in Data!H:H returns grade resolved default rate from Segment_Lookup.'])
+    inst=wb.create_sheet('INSTRUCTIONS'); inst.append(['Excel reporting instructions']); inst.append(['Data sheet contains first 20,000 cleaned loans as a manageable workbook extract; underlying complete portfolio is in warehouse.sqlite.']); inst.append(['Grade_Pivot contains native PivotTable GradeRiskPivot, sourced from Data!A1:I20001.']); inst.append(['Rows: grade. Values: Count of default_flag (resolved loan count); Average of default_flag (resolved-loan default rate).']); inst.append(['Blank default_flag means unresolved status and is excluded from both PivotTable values.']); inst.append(['Pivot cache refreshes when opened in Excel; use Data > Refresh All to refresh manually.']); inst.append(['To create another pivot, select a cell in Data and use Insert > PivotTable.'])
     for sh in wb.worksheets:
       sh.freeze_panes='A2'; sh.auto_filter.ref=sh.dimensions
       for cell in sh[1]: cell.font=Font(bold=True,color='FFFFFF'); cell.fill=PatternFill('solid',fgColor='17365D')
       for i,col in enumerate(sh.columns,1):
         sh.column_dimensions[get_column_letter(i)].width=min(32,max(12,max((len(str(x.value or '')) for x in list(col)[:1000]),default=10)+2))
     wb.save(ROOT/'report.xlsx')
+    # openpyxl cannot write native PivotTables; Apache POI does. This helper
+    # keeps the PivotTable in the generated workbook on every reporting run.
+    import subprocess
+    subprocess.run(['mvn','-q','-f',str(ROOT/'pivot_writer'/'pom.xml'),'compile','exec:java',f'-Dexec.args={ROOT / "report.xlsx"}'],cwd=ROOT,check=True)
     # Six-slide decision summary.
     prs=Presentation()
     def slide(title,lines):
@@ -367,7 +371,7 @@ Portfolio project for credit risk, fraud monitoring and data analytics. Built fr
 
 ## Run
 
-Python 3.11+ required. Install packages with `python -m pip install -r requirements.txt`. Keep downloaded source files in `data/`; run all stages with `make all` (equivalent to `python pipeline.py all`). Model-only stage, after ETL created `warehouse.sqlite`: `make model` or `python pipeline.py model`. Re-run is idempotent: model tables and outputs are rebuilt. Credit model uses chronological issue-year train, validation and test windows; PaySim uses sorted unique steps with first 70% training and final 30% testing. No random split is used. SQLite is local; no cloud services.
+Python 3.11+ and JDK 17+ with Maven required. Install Python packages with `python -m pip install -r requirements.txt`. Keep downloaded source files in `data/`; run all stages with `make all` (equivalent to `python pipeline.py all`). The reporting stage uses Apache POI via Maven to create a native Excel PivotTable. Model-only stage, after ETL created `warehouse.sqlite`: `make model` or `python pipeline.py model`. Re-run is idempotent: model tables and outputs are rebuilt. Credit model uses chronological issue-year train, validation and test windows; PaySim uses sorted unique steps with first 70% training and final 30% testing. No random split is used. SQLite is local; no cloud services.
 
 ## Data sources and download
 
@@ -393,7 +397,7 @@ Kaggle CSV/GZ/ZIP → chunked Python ETL + DQ → SQLite raw_* / clean_* / rejec
 - Fraud candidates are selected from EDA and tuned on training period only. Test period is final 30% of ordered distinct hourly steps. Alerts/day = test alerts divided by test hours / 24. Investigative score is fired-rule count plus alert amount divided by max test-alert amount.
 - Credit model reads inspected application-time fields. WoE numeric bins, category mappings, IV and logistic fit use training vintages only. Grade, sub_grade and int_rate are excluded as Lending Club underwriting outputs; grade-only logistic regression is a same-test-window benchmark. High-null mths_since_last_delinq and mths_since_last_record are not used. Score points use 20 points per odds doubling, anchored at 600 points for 50:1 good-to-bad odds.
 - Drift bins are fitted on training vintages; PSI above 0.10 is watch and above 0.25 is action. Calibration and cutoff trade-offs use the held-out test window. Rejected-applicant outcomes are absent, so reject inference is unavailable; cutoff sweep is descriptive and makes no causal recommendation.
-- Excel `Data` contains first 20,000 cleaned rows as a manageable workbook extract; full data remains in SQLite. Excel includes actual VLOOKUP formulas. Native PivotTables must be inserted manually as described in `INSTRUCTIONS`.
+- Excel `Data` contains first 20,000 cleaned rows as a manageable workbook extract; full data remains in SQLite. Excel includes actual VLOOKUP formulas and a generated native PivotTable. Field layout and refresh steps are documented in `INSTRUCTIONS.md` and the `INSTRUCTIONS` worksheet.
 
 ## Outputs
 

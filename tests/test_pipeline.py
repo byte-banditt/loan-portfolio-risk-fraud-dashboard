@@ -1,5 +1,7 @@
 import csv
 import sqlite3
+from zipfile import ZipFile
+import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 import pytest
@@ -84,6 +86,24 @@ def test_time_split_is_disjoint_and_chronological_by_construction():
     test = years[val_end:]
     assert train and val and test
     assert max(train) < min(val) and max(val) < min(test)
+
+def test_report_workbook_contains_native_grade_pivot():
+    ns = {'x': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+    with ZipFile(ROOT / 'report.xlsx') as book:
+        parts = set(book.namelist())
+        assert 'xl/pivotTables/pivotTable1.xml' in parts
+        assert 'xl/pivotCache/pivotCacheDefinition1.xml' in parts
+        assert sum(p.startswith('xl/pivotTables/pivotTable') and p.endswith('.xml') for p in parts) == 1
+        assert sum(p.startswith('xl/pivotCache/pivotCacheDefinition') and p.endswith('.xml') for p in parts) == 1
+        root = ET.fromstring(book.read('xl/pivotTables/pivotTable1.xml'))
+        assert root.attrib['name'] == 'GradeRiskPivot'
+        assert root.find('x:rowFields/x:field', ns).attrib['x'] == '3'
+        fields = root.findall('x:dataFields/x:dataField', ns)
+        assert [(f.attrib['subtotal'], f.attrib['fld']) for f in fields] == [('count', '8'), ('average', '8')]
+        cache = ET.fromstring(book.read('xl/pivotCache/pivotCacheDefinition1.xml'))
+        assert cache.attrib['refreshOnLoad'] == 'true'
+        source = cache.find('x:cacheSource/x:worksheetSource', ns)
+        assert (source.attrib['sheet'], source.attrib['ref']) == ('Data', 'A1:I20001')
 
 @pytest.mark.parametrize('dataset,required',[('loans',['duplicate_key','negative_amount','negative_dti','int_rate_out_of_range','invalid_or_out_of_range_date','unknown_category']),('paysim',['duplicate_key','negative_amount','negative_balance_or_step','unknown_category'])])
 def test_dq_reports_publish_all_checks_and_null_rates(dataset,required):
