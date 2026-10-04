@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 import pytest
 import pipeline
+import model_review
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -56,6 +57,33 @@ def test_paysim_data_quality_rejects_impossible_values(dq_db,bad,reason):
 def test_paysim_duplicate_composite_key_quarantined(dq_db):
     insert(dq_db,'paysim',[pay(),pay()])
     assert 'duplicate transaction composite key' in dq_db.execute('select reason from rejected_paysim').fetchone()[0]
+
+def test_model_feature_allowlist_excludes_underwriting_outputs_and_post_origination():
+    forbidden = ('grade', 'sub_grade', 'int_rate', 'total_pymnt', 'recoveries',
+                 'collection_recovery_fee', 'last_pymnt_d', 'out_prncp', 'last_credit_pull_d')
+    assert not set(model_review.FEATURE_CANDIDATES).intersection(forbidden)
+    assert all(not any(f == x or f.startswith(x) for x in model_review.FEATURE_CANDIDATES)
+               for f in forbidden)
+
+def test_woe_uses_training_rows_only():
+    codes = [1, 1, 2, 2, 9]
+    y = __import__('numpy').array([0, 1, 0, 1, 1], dtype='uint8')
+    train = __import__('numpy').array([True, True, True, True, False])
+    bins = __import__('numpy').array(codes)
+    first = model_review._woe_fit(codes, y, train, bins, 'x')
+    y[-1] = 0
+    second = model_review._woe_fit(codes, y, train, bins, 'x')
+    assert first[1] == second[1]
+    assert first[2] == second[2]
+
+def test_time_split_is_disjoint_and_chronological_by_construction():
+    years = list(range(2007, 2019))
+    train = years[:int(len(years) * .60)]
+    val_end = max(len(train) + 1, int(len(years) * .80))
+    val = years[len(train):val_end]
+    test = years[val_end:]
+    assert train and val and test
+    assert max(train) < min(val) and max(val) < min(test)
 
 @pytest.mark.parametrize('dataset,required',[('loans',['duplicate_key','negative_amount','negative_dti','int_rate_out_of_range','invalid_or_out_of_range_date','unknown_category']),('paysim',['duplicate_key','negative_amount','negative_balance_or_step','unknown_category'])])
 def test_dq_reports_publish_all_checks_and_null_rates(dataset,required):

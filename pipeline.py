@@ -273,7 +273,7 @@ def stage_reporting(credit,fraud):
     from pptx.util import Inches,Pt
     c=sqlite3.connect(DB); spec='''# Tableau dashboard specification
 
-## KPI cards (7)
+## KPI cards (10)
 
 1. Total loans loaded — `loan_quality.csv`
 2. Loans retained after quality checks — `loan_quality.csv`
@@ -282,6 +282,9 @@ def stage_reporting(credit,fraud):
 5. Combined-rule precision — `fraud_rule_performance.csv`
 6. Combined-rule recall — `fraud_rule_performance.csv`
 7. Combined alerts per day — `alerts_per_day.csv`
+8. Scorecard test AUC — `model_performance.csv`, model=`WoE logistic scorecard`, window=`test`
+9. Grade-only baseline test AUC — `model_performance.csv`, model=`grade-only logistic baseline`, window=`test`
+10. Maximum feature PSI — `psi_by_year.csv`, excluding the `score` row; show issue year and status
 
 ## Charts, filters and extracts
 
@@ -290,7 +293,21 @@ def stage_reporting(credit,fraud):
 - Active-book delinquency distribution: `delinquency_buckets.csv`; filter bucket.
 - Fraud rule comparison bars for precision, recall, F1: `fraud_rule_performance.csv`; filter rule and test window.
 - Operational alert volume by rule: `alerts_per_day.csv`; filter rule.
+- Score calibration by test score decile: `score_calibration.csv`; show mean score and observed default rate.
+- Stability heatmap: `psi_by_year.csv`; rows=feature/score, columns=issue year, color by PSI; reference 0.10 watch and 0.25 action.
+- Approval/bad-rate trade-off: `strategy_sweep.csv`; plot approval rate against bad rate among approved and declined; no cutoff recommendation.
+- Feature information value bars: `feature_information_value.csv`; filter feature type; IV is train-window only.
 - Suggested global filters: issue quarter, segment dimension, segment, fraud rule. Fraud evaluates only the held-out final time window.
+
+## Model review extracts
+
+- `model_performance.csv`: validation and test scorecard AUC/KS/Gini plus same-test-set grade-only baseline.
+- `score_calibration.csv`: test score decile, loan count, mean points score and observed default rate.
+- `psi_by_year.csv`: training-window population stability index for score and each feature by later issue year, with stable/watch/action status.
+- `strategy_sweep.csv`: test-window score cutoffs, approval rate, approved and declined observed bad rates, and loan counts.
+- `feature_information_value.csv`: feature-level IV fitted from training vintages.
+
+All model extracts use resolved loans and chronological issue-year splits. Rejected-applicant outcomes are unobserved; strategy trade-offs are descriptive.
 '''
     (ROOT/'DASHBOARD_SPEC.md').write_text(spec)
     clean_loans=c.execute('SELECT COUNT(*) FROM clean_loans').fetchone()[0]
@@ -327,22 +344,30 @@ def stage_reporting(credit,fraud):
     slide('Credit findings',[f"Loans loaded {credit['total']:,}; resolved {credit['resolved']:,}",f"Resolved default rate {c.execute('SELECT AVG(default_flag) FROM credit_resolved').fetchone()[0]:.2%}",f"Issue-quarter vintage points {len(pd.read_csv(ROOT/'tableau_extracts'/'vintage_default_rate.csv'))}",f"Worst deterioration: {credit['worst']}"])
     slide('Root-cause analysis',[f"Worst segment: {credit['worst']}",f"Top marginal shift-share driver: {credit['driver']} ({credit['pp']:+.3f} pp)","Marginal shift-share dimensions overlap; association is not causation.","See RCA.md for windows, rates and caveats."])
     slide('Fraud rules and performance',[f"PaySim transactions {fraud['n']:,}; supported rules {fraud['rules']}",f"Combined precision {fraud['perf']['precision']:.3%}; recall {fraud['perf']['recall']:.3%}",f"Alerts/day {fraud['perf']['alerts_per_day']:.2f}","Held-out final 30% of ordered steps; thresholds selected on first 70%."])
-    slide('Limitations',["US Lending Club data; not any target lender's portfolio or policy context.","Default rate uses resolved loans only; current loans censored/excluded.","Issue-quarter vintage rates only; no comparable months-on-book curves.","PaySim is synthetic; no production performance or regulator conclusions.","No real policy, underwriting, investigation or regulator context."])
+    slide('Limitations',["US Lending Club data; not any target lender's portfolio or policy context.","Resolved-only model cohort; selection and censoring bias.","Rejected-applicant outcomes are unobserved; no reject inference.","Issue-quarter vintage rates only; no comparable months-on-book curves.","PaySim is synthetic; no production performance or regulator conclusions.","No real policy, underwriting, investigation or regulator context."])
     prs.save(ROOT/'summary.pptx'); c.close()
     print('Reporting: Tableau extracts, formatted Excel workbook, six-slide deck created.')
 
-def write_docs(credit,fraud):
+def write_docs(credit,fraud,model=None):
     vals=pd.read_csv(ROOT/'tableau_extracts'/'loan_quality.csv').set_index('metric').value
     spec=(ROOT/'DASHBOARD_SPEC.md').read_text(); kpi_section=spec.split('## Charts, filters and extracts')[0]; kpis=sum(1 for line in kpi_section.splitlines() if line.lstrip()[:1].isdigit() and '. ' in line)
-    resume=f"# Resume numbers (computed from this run)\n\n| Value | Result | Code path |\n|---|---:|---|\n| Total loans loaded | {credit['total']:,} | `pipeline.py:stage_etl`, `raw_loans` |\n| Loans after cleaning | {int(vals['Loans after cleaning']):,} | `pipeline.py:stage_etl`, `clean_loans` |\n| Worst segment | {credit['worst']} | `pipeline.py:stage_credit`, `RCA.md` |\n| Percentage-point increase attributed to top driver | {credit['pp']:+.3f} pp ({credit['driver']}) | `pipeline.py:stage_credit`, `RCA.md` |\n| Dashboard KPI cards | {kpis} | `DASHBOARD_SPEC.md` |\n| Fraud rules | {fraud['rules']} | `pipeline.py:stage_fraud`, `FRAUD_RULES.md` |\n| PaySim transactions | {fraud['n']:,} | `pipeline.py:stage_etl`, `clean_paysim` |\n| Combined test precision | {fraud['perf']['precision']:.6f} | `pipeline.py:stage_fraud`, test window |\n| Combined test recall | {fraud['perf']['recall']:.6f} | `pipeline.py:stage_fraud`, test window |\n| Alerts per day | {fraud['perf']['alerts_per_day']:.6f} | `pipeline.py:stage_fraud`, 24 steps/day |\n"
+    resume=f"# Project numbers (computed from this run)\n\n| Value | Result | Code path |\n|---|---:|---|\n| Total loans loaded | {credit['total']:,} | `pipeline.py:stage_etl`, `raw_loans` |\n| Loans after cleaning | {int(vals['Loans after cleaning']):,} | `pipeline.py:stage_etl`, `clean_loans` |\n| Worst segment | {credit['worst']} | `pipeline.py:stage_credit`, `RCA.md` |\n| Percentage-point increase attributed to top driver | {credit['pp']:+.3f} pp ({credit['driver']}) | `pipeline.py:stage_credit`, `RCA.md` |\n| Dashboard KPI cards | {kpis} | `DASHBOARD_SPEC.md` |\n| Fraud rules | {fraud['rules']} | `pipeline.py:stage_fraud`, `FRAUD_RULES.md` |\n| PaySim transactions | {fraud['n']:,} | `pipeline.py:stage_etl`, `clean_paysim` |\n| Combined test precision | {fraud['perf']['precision']:.6f} | `pipeline.py:stage_fraud`, test window |\n| Combined test recall | {fraud['perf']['recall']:.6f} | `pipeline.py:stage_fraud`, test window |\n| Alerts per day | {fraud['perf']['alerts_per_day']:.6f} | `pipeline.py:stage_fraud`, 24 steps/day |\n"
+    if model:
+      for window in ('validation','test'):
+        m=model[window]
+        for metric in ('auc','ks','gini'):
+          resume += f"| Scorecard {window} {metric.upper()} | {m[metric]:.6f} | `model_review.py:run`, `{window}` years {model[window+'_years']} |\n"
+      for metric in ('auc','ks','gini'):
+        resume += f"| Grade-only test {metric.upper()} | {model['grade'][metric]:.6f} | `model_review.py:run`, grade-only baseline |\n"
+      resume += f"| Model loans loaded (resolved) | {model['loaded']['resolved']:,} | `model_review.py:_load_features`, `model_input_loans` |\n| Model feature count | {len(model['features'])} | `model_review.py:FEATURE_CANDIDATES` present in observed source |\n| Maximum feature PSI | {model['max_psi']:.6f} ({model['max_psi_feature']}) | `model_review.py:run`, `tableau_extracts/psi_by_year.csv` |\n| Reject inference effect | NOT AVAILABLE — rejected-applicant outcomes are absent | `MODEL_REVIEW.md`, strategy sweep limitations |\n"
     (ROOT/'NUMBERS.md').write_text(resume)
     readme=f"""# Loan Portfolio Risk & Fraud Early-Warning Dashboard
 
-Portfolio project for credit risk, fraud monitoring and data analytics. Built from Kaggle Lending Club accepted-loan records and PaySim synthetic transaction records. Python ETL loads chunked CSV data to SQLite `raw_*`, `clean_*`, and `rejected_*` tables; SQL files define analysis views/rules. Outputs: DQ reports, credit vintage/segment/delinquency analysis, fraud EDA and held-out rule metrics, RCA, Tableau extracts, Excel workbook and six-slide presentation.
+Portfolio project for credit risk, fraud monitoring and data analytics. Built from Kaggle Lending Club accepted-loan records and PaySim synthetic transaction records. Python ETL loads chunked CSV data to SQLite `raw_*`, `clean_*`, and `rejected_*` tables; SQL files define analysis views/rules. Outputs: DQ reports, credit vintage/segment/delinquency analysis, time-based WoE scorecard review, fraud EDA and held-out rule metrics, RCA, Tableau extracts, Excel workbook and six-slide presentation.
 
 ## Run
 
-Python 3.11+ required. Install packages with `python -m pip install -r requirements.txt`. Keep downloaded source files in `data/`; run all stages with `make all` (equivalent to `python pipeline.py all`). Re-run is idempotent: warehouse and generated outputs are rebuilt. Fixed split is by sorted unique PaySim step with first 70% training and final 30% testing; no random sampling is used. SQLite is local; no cloud services.
+Python 3.11+ required. Install packages with `python -m pip install -r requirements.txt`. Keep downloaded source files in `data/`; run all stages with `make all` (equivalent to `python pipeline.py all`). Model-only stage, after ETL created `warehouse.sqlite`: `make model` or `python pipeline.py model`. Re-run is idempotent: model tables and outputs are rebuilt. Credit model uses chronological issue-year train, validation and test windows; PaySim uses sorted unique steps with first 70% training and final 30% testing. No random split is used. SQLite is local; no cloud services.
 
 ## Data sources and download
 
@@ -356,7 +381,7 @@ Download via authenticated Kaggle CLI: `kaggle datasets download -d wordsforthew
 ```text
 Kaggle CSV/GZ/ZIP → chunked Python ETL + DQ → SQLite raw_* / clean_* / rejected_*
                                                    ↓ SQL in sql/*.sql
-                             credit & fraud marts/views → CSV extracts + XLSX + PPTX + Markdown
+                             credit, fraud & model marts/views → CSV extracts + XLSX + PPTX + Markdown
 ```
 
 ## Design decisions
@@ -366,16 +391,19 @@ Kaggle CSV/GZ/ZIP → chunked Python ETL + DQ → SQLite raw_* / clean_* / rejec
 - Vintage is issue-quarter default rate on resolved loans only. Available fields do not establish comparable months-on-book exposure, so no true months-on-book curve is claimed.
 - RCA compares earliest and latest quartiles of available issue quarters. Marginal shift-share is computed independently for grade, term and purpose; effects overlap and do not sum to portfolio change. No causal interpretation.
 - Fraud candidates are selected from EDA and tuned on training period only. Test period is final 30% of ordered distinct hourly steps. Alerts/day = test alerts divided by test hours / 24. Investigative score is fired-rule count plus alert amount divided by max test-alert amount.
+- Credit model reads inspected application-time fields. WoE numeric bins, category mappings, IV and logistic fit use training vintages only. Grade, sub_grade and int_rate are excluded as Lending Club underwriting outputs; grade-only logistic regression is a same-test-window benchmark. High-null mths_since_last_delinq and mths_since_last_record are not used. Score points use 20 points per odds doubling, anchored at 600 points for 50:1 good-to-bad odds.
+- Drift bins are fitted on training vintages; PSI above 0.10 is watch and above 0.25 is action. Calibration and cutoff trade-offs use the held-out test window. Rejected-applicant outcomes are absent, so reject inference is unavailable; cutoff sweep is descriptive and makes no causal recommendation.
 - Excel `Data` contains first 20,000 cleaned rows as a manageable workbook extract; full data remains in SQLite. Excel includes actual VLOOKUP formulas. Native PivotTables must be inserted manually as described in `INSTRUCTIONS`.
 
 ## Outputs
 
-`warehouse.sqlite`, `dq_report_loans.csv`, `dq_report_paysim.csv`, `RCA.md`, `FRAUD_RULES.md`, `DASHBOARD_SPEC.md`, `tableau_extracts/`, `investigator_queue.csv`, `report.xlsx`, `summary.pptx`, `NUMBERS.md`.
+`warehouse.sqlite`, `dq_report_loans.csv`, `dq_report_paysim.csv`, `RCA.md`, `FRAUD_RULES.md`, `MODEL_REVIEW.md`, `scorecard.json`, `DASHBOARD_SPEC.md`, `tableau_extracts/`, `investigator_queue.csv`, `report.xlsx`, `summary.pptx`, `NUMBERS.md`.
 
 ## Limitations
 
 - Lending Club is US marketplace lending data. It does not represent any target lender's portfolio, policy, product or customer behavior.
 - Resolved-only default rates exclude unresolved/current loans, creating selection and censoring limitations.
+- Scorecard is trained and evaluated only on resolved Lending Club loans, creating resolved-only selection bias. Rejected-applicant outcomes are unobserved; no reject inference or causal cutoff recommendation is supported.
 - Issue-quarter vintage analysis is not exposure-aligned months-on-book analysis.
 - PaySim is synthetic. Rule results are not evidence of production fraud detection quality or real loss prevention.
 - Data contains no target institution's decision policy, real investigator outcomes or applicable regulator context. This is an analytical portfolio exercise, not policy or compliance advice.
@@ -393,8 +421,10 @@ def all_stages():
     loan,pay=stage_etl(); _tests(); print(f"Stage summary: loans {loan['raw']:,}/{loan['clean']:,}/{loan['rejected']:,} raw/clean/rejected; PaySim {pay['raw']:,}/{pay['clean']:,}/{pay['rejected']:,}.")
     credit=stage_credit(); _tests(); print(f"Stage summary: resolved loans {credit['resolved']:,}; overall resolved default rate {credit['default_rate']:.2%}; worst {credit['worst']}.")
     fraud=stage_fraud(); _tests(); print(f"Stage summary: fraud rules {fraud['rules']}; test precision {fraud['perf']['precision']:.5f}; recall {fraud['perf']['recall']:.5f}.")
-    stage_reporting(credit,fraud); write_docs(credit,fraud); _tests()
-    print('Stage summary: Tableau extracts, Excel, PowerPoint, README, resume numbers generated.')
+    import model_review
+    model=model_review.run(DB,LOAN,ROOT,ROOT/'tableau_extracts'); _tests(); print(f"Stage summary: scorecard test AUC {model['test']['auc']:.5f}, grade baseline {model['grade']['auc']:.5f}; PSI rows {len(model['psi']):,}.")
+    stage_reporting(credit,fraud); write_docs(credit,fraud,model); _tests()
+    print('Stage summary: Tableau extracts, Excel, PowerPoint, README, NUMBERS.md, model memo generated.')
 
 if __name__=='__main__' and len(sys.argv)>1:
     stage=sys.argv[1]
@@ -402,10 +432,16 @@ if __name__=='__main__' and len(sys.argv)>1:
     elif stage=='etl': stage_etl(); _tests()
     elif stage=='credit': stage_credit(); _tests()
     elif stage=='fraud': stage_fraud(); _tests()
+    elif stage=='model':
+      import model_review
+      _tests(); result=model_review.run(DB,LOAN,ROOT,ROOT/'tableau_extracts'); _tests()
+      print(f"Stage summary: scorecard test AUC {result['test']['auc']:.5f}, grade-only AUC {result['grade']['auc']:.5f}; features={len(result['features'])}.")
     elif stage=='reporting':
       credit=stage_credit()
       perf=pd.read_csv(ROOT/'tableau_extracts'/'fraud_rule_performance.csv')
       combined=perf[perf.rule=='Combined rule set'].iloc[0].to_dict()
       c=sqlite3.connect(DB); transaction_count=c.execute('SELECT COUNT(*) FROM clean_paysim').fetchone()[0]; c.close()
       fraud={'n':transaction_count,'rules':len(perf)-2,'perf':combined,'performance':perf}
-      stage_reporting(credit,fraud); write_docs(credit,fraud); _tests()
+      import model_review
+      model=model_review.run(DB,LOAN,ROOT,ROOT/'tableau_extracts')
+      stage_reporting(credit,fraud); write_docs(credit,fraud,model); _tests()
