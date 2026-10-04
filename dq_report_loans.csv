@@ -1,0 +1,22 @@
+check,rows_affected,action_taken
+missing_expected_columns,0,reported; available columns used
+duplicate_key,0,quarantined
+negative_amount,0,quarantined
+negative_dti,2,quarantined
+int_rate_out_of_range,0,quarantined
+invalid_or_out_of_range_date,33,quarantined
+unknown_category,0,quarantined
+negative_balance_or_step,0,quarantined
+null_rate:id,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:loan_amnt,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:term,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:int_rate,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:grade,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:sub_grade,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:home_ownership,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:annual_inc,37,flagged; retained when other checks pass (rate=0.000016)
+null_rate:issue_d,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:loan_status,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:purpose,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:addr_state,33,flagged; retained when other checks pass (rate=0.000015)
+null_rate:dti,1744,flagged; retained when other checks pass (rate=0.000771)

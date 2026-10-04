@@ -1,0 +1,31 @@
+# Downloaded Kaggle sources (keep local; fetch via README instructions)
+/data/
+
+# Local SQLite warehouse and journal files
+*.sqlite
+*.sqlite3
+*.db
+*-wal
+*-shm
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local secrets and logs
+.env
+.env.*
+!.env.example
+*.log

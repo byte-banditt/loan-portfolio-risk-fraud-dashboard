@@ -1,0 +1,20 @@
+check,rows_affected,action_taken
+missing_expected_columns,0,reported; available columns used
+duplicate_key,0,quarantined
+negative_amount,0,quarantined
+negative_dti,0,quarantined
+int_rate_out_of_range,0,quarantined
+invalid_or_out_of_range_date,0,quarantined
+unknown_category,0,quarantined
+negative_balance_or_step,0,quarantined
+null_rate:step,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:type,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:amount,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:nameOrig,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:oldbalanceOrg,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:newbalanceOrig,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:nameDest,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:oldbalanceDest,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:newbalanceDest,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:isFraud,0,flagged; retained when other checks pass (rate=0.000000)
+null_rate:isFlaggedFraud,0,flagged; retained when other checks pass (rate=0.000000)

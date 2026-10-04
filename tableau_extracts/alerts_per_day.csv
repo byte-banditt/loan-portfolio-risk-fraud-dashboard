@@ -1,0 +1,5 @@
+rule,alerts,alerts_per_day
+Large TRANSFER,1047,113.1891891891892
+Account drain,2354,254.48648648648648
+Combined rule set,3278,354.3783783783784
+Dataset isFlaggedFraud baseline,10,1.0810810810810811
